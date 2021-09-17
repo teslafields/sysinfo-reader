@@ -1,7 +1,5 @@
-use std::fs::File;
-use std::io::prelude::*;
 use std::default::Default;
-use crate::generic::SysInfo;
+use super::SysInfo;
 use crate::utils;
 
 static CPU_INFO: &str = "/proc/cpuinfo";
@@ -25,6 +23,17 @@ pub struct CpuInfo {
 }
 
 impl CpuInfo {
+    fn read_cpus_online(&mut self) {
+        let content: String = utils::open_and_read(CPU_ONLINE);
+        let content = content.trim();
+        let cpus_online = utils::parse_online_cpus(content);
+        for cpu in cpus_online {
+            let mut cpui = Cpu::default();
+            cpui.id = cpu;
+            self.cpus.push(cpui);
+        }
+    }
+
     fn read_model() -> String {
         let content: String = utils::open_and_read(CPU_INFO);
         let key: &str = "model name";
@@ -70,24 +79,12 @@ impl CpuInfo {
 
 impl SysInfo for CpuInfo {
     fn new() -> Self {
-        let mut f = File::open(CPU_ONLINE)
-            .expect(&format!("Error opening file: {}", CPU_ONLINE));
-        let mut content = String::new();
-        f.read_to_string(&mut content)
-            .expect(&format!("Error reading content: {}", CPU_ONLINE));
-        let content = content.trim();
-        let cpus = utils::parse_online_cpus(content);
-        let mut cpu_v = Vec::new();
-        for cpu in cpus {
-            let mut cpui = Cpu::default();
-            cpui.id = cpu;
-            cpu_v.push(cpui);
-        }
-        CpuInfo { cpus: cpu_v , model: String::new() }
+        CpuInfo::default()
     }
 
     fn read(&mut self) {
         self.model = CpuInfo::read_model();
+        self.read_cpus_online();
         for cpu in self.cpus.iter_mut() {
             cpu.freq = CpuInfo::read_freq(&cpu.id);
             cpu.driver = CpuInfo::read_driver(&cpu.id);
@@ -105,4 +102,5 @@ impl SysInfo for CpuInfo {
         }
     }
 }
+
 
