@@ -10,6 +10,26 @@ pub fn open_and_read(filename: &str) -> String {
     content
 }
 
+pub fn parse_key_from_text(s: &str, k: &str, endstr: &str,
+        trim: Option<&[char]>) -> Option<String> {
+    match s.find(k) {
+        Some(idx_b) => {
+            let content = &s[idx_b + k.len()..];
+            match content.find(endstr) {
+                Some(idx_e) => {
+                    let mut val = &content[..idx_e];
+                    if trim.is_some() {
+                        val = val.trim_matches(trim.unwrap());
+                    }
+                    Some(String::from(val))
+                },
+                _ => None
+            }
+        },
+        _ => None
+    }
+}
+
 pub fn parse_online_cpus(s: &str) -> Vec<u32> {
     let mut cpu_ranges: Vec<String> = Vec::new();
     let mut slice = s;

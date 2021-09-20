@@ -49,7 +49,7 @@ pub fn run_sys_reader(flags: SysInfoFlags) -> Result<(), Error> {
     let (tx, rx): (SyncSender<Box<dyn SysInfo + Send>>,
                    Receiver<Box<dyn SysInfo + Send>>) = sync_channel(chan_size);
     let h1 = tasks::task_read_and_send(flags, Arc::clone(&run_flag), tx);
-    let h2 = tasks::task_receive_and_display(Arc::clone(&run_flag), rx);
+    let h2 = tasks::task_receive_and_display(chan_size, Arc::clone(&run_flag), rx);
     tasks::task_handle_signals(Arc::clone(&run_flag))?;
     let _ = h1.join().unwrap();
     let _ = h2.join().unwrap();

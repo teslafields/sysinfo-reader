@@ -2,7 +2,7 @@ use std::io;
 use std::io::Error;
 use std::time;
 use std::sync::{Arc, RwLock};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::mpsc::{Receiver, SyncSender};
 use std::thread::{sleep, spawn, JoinHandle};
 use signal_hook::consts::signal::*;
 use signal_hook::iterator::Signals;
@@ -42,16 +42,23 @@ pub fn task_read_and_send(sys_flags: SysInfoFlags, run_flag: Arc<RwLock<bool>>,
     handle
 }
 
-pub fn task_receive_and_display(run_flag: Arc<RwLock<bool>>,
+pub fn task_receive_and_display(chan_size: usize, run_flag: Arc<RwLock<bool>>,
         rx: Receiver<Box<dyn SysInfo + Send>>)
         ->  JoinHandle<()> {
     let handle = spawn(move || {
         while *run_flag.read().unwrap() {
-            // print!("\x1B[2J");
-            match rx.recv() {
-                Ok(data) => data.display(),
-                Err(_) => (),
+            let mut data_in: Vec<Box<dyn SysInfo + Send>> = Vec::new();
+            for _i in 0..chan_size {
+                match rx.recv() {
+                    Ok(d) => data_in.push(d),
+                    Err(_) => (),
+                }
             }
+            print!("\x1B[2J");
+            for d in data_in {
+                d.display();
+            }
+
         }
     });
     handle
