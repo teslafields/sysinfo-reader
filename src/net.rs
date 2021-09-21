@@ -1,3 +1,6 @@
+//! This module implements the SysInfo trait for the Network subsystem,
+//! allowing to collect and display data from network interfaces
+
 use std::default::Default;
 use std::io;
 use std::fs;
@@ -84,7 +87,7 @@ impl SysInfo for NetInfo {
         if end % 2 == 1 {
             let iface = &self.ifaces[end-1];
             println!("|{:42}|", format!(" {} ({})", iface.name, iface.addr));
-            println!("|  `- tx: {:9} kB | rx: {:10} kB |", iface.tx_bytes,
+            println!("|  tx: {:11} kB | rx: {:11} kB |", iface.tx_bytes,
                    iface.rx_bytes);
         }
 

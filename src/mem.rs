@@ -1,3 +1,6 @@
+//! This module implements the SysInfo trait for the RAM subsystem,
+//! allowing to collect and display data from RAM
+
 use std::default::Default;
 use super::SysInfo;
 use crate::utils;

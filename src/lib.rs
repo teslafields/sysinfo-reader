@@ -1,3 +1,8 @@
+//! A very simple solution for real-time displaying system's info
+//!
+//! This package was built for the purpose of displaying system's information
+//! in a very simple way but with relevant and real-time data
+
 pub mod net;
 pub mod mem;
 pub mod cpu;
@@ -11,12 +16,15 @@ use std::sync::{Arc, RwLock};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::default::Default;
 
+
+/// The generic trait for all subsystems
 pub trait SysInfo {
     fn new() -> Self where Self: Sized;
     fn read(&mut self);
     fn display(&self);
 }
 
+/// Flags that control which subsystem will be active
 #[derive(Default)]
 pub struct SysInfoFlags {
     pub cpu: bool,
@@ -26,6 +34,8 @@ pub struct SysInfoFlags {
     pub sys: bool,
 }
 
+/// This function initialize the program by returning a SysInfoFlags struct based
+/// on the provided command-line arguments
 pub fn init_sys_reader(argv: &Vec<String>) -> SysInfoFlags {
     let mut flags = SysInfoFlags::default();
     flags.cpu = true;
@@ -38,6 +48,8 @@ pub fn init_sys_reader(argv: &Vec<String>) -> SysInfoFlags {
     flags
 }
 
+/// This is a blocking function that will start the threads responsible for
+/// reading and displaying the system's info in the stdout
 pub fn run_sys_reader(flags: SysInfoFlags) -> Result<(), Error> {
     let mut chan_size: usize = 0;
     if flags.cpu { chan_size += 1; }

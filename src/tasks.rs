@@ -1,3 +1,7 @@
+//! This module is responsible for to control the threads that
+//! work on the main tasks, using mechanisms such as channel and
+//! mutex
+
 use std::io;
 use std::io::Error;
 use std::time;
@@ -12,6 +16,7 @@ use crate::net::NetInfo;
 use super::{SysInfo, SysInfoFlags};
 
 
+/// Loop that implements periodic reads in the selected subsystems
 pub fn task_read_and_send(sys_flags: SysInfoFlags, run_flag: Arc<RwLock<bool>>,
     tx: SyncSender<Box<dyn SysInfo + Send>>) -> JoinHandle<io::Result<()>>
 {
@@ -48,6 +53,8 @@ pub fn task_read_and_send(sys_flags: SysInfoFlags, run_flag: Arc<RwLock<bool>>,
     handle
 }
 
+/// Loop that implements periodic stdout writes based on the received data from
+/// the channel
 pub fn task_receive_and_display(chan_size: usize, run_flag: Arc<RwLock<bool>>,
         rx: Receiver<Box<dyn SysInfo + Send>>)
         ->  JoinHandle<()> {
@@ -71,6 +78,7 @@ pub fn task_receive_and_display(chan_size: usize, run_flag: Arc<RwLock<bool>>,
     handle
 }
 
+/// Loop that implements signal handling
 pub fn task_handle_signals(run_flag: Arc<RwLock<bool>>) -> Result<(), Error> {
     let mut signals = Signals::new(&[
         SIGHUP,
