@@ -93,12 +93,22 @@ impl SysInfo for CpuInfo {
     }
 
     fn display(&self) {
-        println!("|{:=^42}|", " CPU INFO ");
-        println!("| {:40} |", self.model);
-        for cpu in &self.cpus {
+        println!("|{:=^85}|", " CPU INFO ");
+        println!("| {:83} |", self.model);
+        let end = self.cpus.len();
+        for i in (0..end-1).step_by(2) {
+            let cpu1 = &self.cpus[i];
+            let cpu2 = &self.cpus[i+1];
+            println!("|{:-^42}|{:-^42}|", format!(" CPU{} ", cpu1.id), format!(" CPU{} ", cpu2.id));
+            println!("| {:7.2} MHz | {:11} | {:11} | {:7.2} MHz | {:11} | {:11} |",
+                     cpu1.freq, cpu1.governor, cpu1.driver, cpu2.freq, cpu2.governor,
+                     cpu2.driver);
+        }
+        if end % 2 == 1 {
+            let cpu = &self.cpus[end-1];
             println!("|{:-^42}|", format!(" CPU{} ", cpu.id));
-            println!("| {:7.2} MHz | {:11} | {:11} |", cpu.freq,
-                     cpu.governor, cpu.driver);
+            println!("| {:7.2} MHz | {:11} | {:11} |",
+                     cpu.freq, cpu.governor, cpu.driver);
         }
     }
 }

@@ -92,17 +92,16 @@ impl SysInfo for MemInfo {
     }
 
     fn display(&self) {
-        println!("|{:=^42}|", " MEM INFO ");
-        println!("| {:11} | {:12} | {:11} |", "total (kB)", "used (kB)",
-                 "free (kB)");
-        println!("| {:11} | {:12} | {:11} |", self.total, self.used,
-                 self.free);
-        println!("|{:-^13}|{:-^14}|{:-^13}|", "-", "-", "-");
-        println!("| {:11} | {:12} | {:11} |", "avail (kB)", "buff/cached", " ");
-        println!("| {:11} | {:12} | {:11} |", self.avail, self.buff, " ");
-        println!("|{:-^13}|{:-^14}|{:-^13}|", "-", "-", "-");
-        println!("| {:11} | {:12} | {:11} |", "swap total", "swap used", "swap free");
-        println!("| {:11} | {:12} | {:11} |", self.swapt, self.swapu, self.swapf);
+        println!("|{:=^85}|", " MEM INFO ");
+        println!("| {:19} | {:18} | {:18} | {:19} |", "total (kB)", "used (kB)",
+                 "free (kB)", "available (kB)");
+        println!("| {:19} | {:18} | {:18} | {:19} |", self.total, self.used,
+                 self.free, self.avail);
+        println!("|{:-^85}|", "-");
+        println!("| {:19} | {:18} | {:18} | {:19} |", "buff/cached (kB)",
+                "swap total (kB)", "swap used (kB)", "swap free (kB)");
+        println!("| {:19} | {:18} | {:18} | {:19} |", self.buff,  self.swapt,
+                 self.swapu, self.swapf);
     }
 }
 

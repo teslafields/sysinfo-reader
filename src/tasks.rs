@@ -8,6 +8,7 @@ use signal_hook::consts::signal::*;
 use signal_hook::iterator::Signals;
 use crate::cpu::CpuInfo;
 use crate::mem::MemInfo;
+use crate::net::NetInfo;
 use super::{SysInfo, SysInfoFlags};
 
 
@@ -27,6 +28,11 @@ pub fn task_read_and_send(sys_flags: SysInfoFlags, run_flag: Arc<RwLock<bool>>,
                 let mut mem_info = MemInfo::new();
                 mem_info.read();
                 data_out.push(Box::new(mem_info));
+            }
+            if sys_flags.net {
+                let mut net_info = NetInfo::new();
+                net_info.read();
+                data_out.push(Box::new(net_info));
             }
             if data_out.len() > 0 {
                 for data in data_out {
@@ -58,6 +64,7 @@ pub fn task_receive_and_display(chan_size: usize, run_flag: Arc<RwLock<bool>>,
             for d in data_in {
                 d.display();
             }
+            println!("|{:=^85}|", "=");
 
         }
     });
@@ -75,7 +82,6 @@ pub fn task_handle_signals(run_flag: Arc<RwLock<bool>>) -> Result<(), Error> {
         match signal as libc::c_int {
             SIGHUP | SIGTERM | SIGINT | SIGQUIT => {
                 {
-                    println!("Received signal {:?}", signal);
                     let mut flag = run_flag.write().unwrap();
                     *flag = false;
                     break;

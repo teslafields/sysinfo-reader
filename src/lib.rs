@@ -1,3 +1,4 @@
+pub mod net;
 pub mod mem;
 pub mod cpu;
 pub mod utils;
@@ -53,6 +54,5 @@ pub fn run_sys_reader(flags: SysInfoFlags) -> Result<(), Error> {
     tasks::task_handle_signals(Arc::clone(&run_flag))?;
     let _ = h1.join().unwrap();
     let _ = h2.join().unwrap();
-    println!("Terminating. Bye bye");
     Ok(())
 }
