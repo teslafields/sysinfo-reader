@@ -2,6 +2,11 @@
 name = "sysinfo-reader"
 version = "0.1.0"
 edition = "2018"
+authors = ["Benhur Tessele <benhur.tessele@quokka.se"]
+license = "MIT"
+description = """
+A very simple solution for real-time displaying system's info
+"""
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
