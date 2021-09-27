@@ -4,9 +4,9 @@ use sysinfo_reader::*;
 
 
 fn main() -> Result<(), Error> {
-    let argv: Vec<String> = env::args().collect();
-    let sys_flags = init_sys_reader(&argv);
-    run_sys_reader(sys_flags)?;
+    let _: Vec<String> = env::args().collect();
+    let sysdata = init_sys_reader(3, 2);
+    run_sys_reader(sysdata)?;
     Ok(())
 }
 

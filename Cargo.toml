@@ -13,4 +13,5 @@ A very simple solution for real-time displaying system's info
 [dependencies]
 signal-hook = "0.3.10"
 libc = "0.2.101"
+sysinfo = "0.20.3"
 

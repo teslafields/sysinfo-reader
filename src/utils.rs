@@ -1,5 +1,44 @@
+use std::fmt;
+use std::iter::IntoIterator;
 use std::fs::File;
 use std::io::prelude::*;
+use std::collections::VecDeque;
+use std::collections::vec_deque::Iter;
+
+
+pub struct RingBuffer<T>(VecDeque<T>, usize);
+
+impl<T> RingBuffer<T> {
+    pub fn new(capacity: usize) -> Self {
+        RingBuffer(VecDeque::with_capacity(capacity), capacity)
+    }
+
+    pub fn push_back(&mut self, item: T) {
+        if self.0.len() >= self.1 {
+            let _ = self.0.pop_front();
+        }
+        self.0.push_back(item);
+    }
+
+    pub fn pop_pront(&mut self) {
+        let _ = self.0.pop_front();
+    }
+}
+
+impl<'a, T> IntoIterator for &'a RingBuffer<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+
+    fn into_iter(self) -> Iter<'a, T> {
+        self.0.iter()
+    }
+}
+
+impl<T: fmt::Debug> fmt::Debug for RingBuffer<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_list().entries(self.0.iter()).finish()
+    }
+}
 
 pub fn open_and_read(filename: &str) -> String {
     let mut f = File::open(&filename)
