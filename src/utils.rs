@@ -13,6 +13,14 @@ impl<T> RingBuffer<T> {
         RingBuffer(VecDeque::with_capacity(capacity), capacity)
     }
 
+    pub fn length(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        self.0.iter()
+    }
+
     pub fn push_back(&mut self, item: T) {
         if self.0.len() >= self.1 {
             let _ = self.0.pop_front();

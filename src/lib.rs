@@ -3,21 +3,72 @@
 //! This package was built for the purpose of displaying system's information
 //! in a very simple way but with relevant and real-time data
 
-pub mod net;
-pub mod mem;
-pub mod cpu;
 pub mod utils;
 pub mod tasks;
 
 extern crate sysinfo;
+extern crate num_traits;
 
 use std::io::Error;
 use std::sync::{Arc, RwLock};
 use std::fmt;
 use std::default::Default;
+use std::cmp::PartialOrd;
+use std::iter::Sum;
+use num::{Num, NumCast};
 use sysinfo::{System, SystemExt};
 use crate::utils::RingBuffer;
+use std::ops::{Add, Mul, Div, Sub, AddAssign};
 
+
+struct Stat<T> {
+    buff: RingBuffer<T>,
+    pub max: T,
+    pub min: T,
+    avg: T
+}
+
+impl<T> Stat<T> 
+where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum
+{
+    pub fn new(capacity: usize) -> Self {
+        Stat {
+            buff: RingBuffer::new(capacity),
+            max: NumCast::from(u32::MIN).unwrap(),
+            min: NumCast::from(u32::MAX).unwrap(),
+            avg: T::default()
+        }   
+    }   
+
+    pub fn push_value(&mut self, val: T) {
+        if val > self.max { self.max = val }
+        if val < self.min { self.min = val }
+        self.buff.push_back(val);
+        let sum: T = self.buff.iter().copied().sum();
+        self.avg = sum/NumCast::from(self.buff.length()).unwrap();
+    }
+}
+
+struct SysinfoStats {
+    cpu_usage: Stat<f32>,
+    cpu_freq: Stat<u64>,
+    mem_free: Stat<u64>,
+    mem_used: Stat<u64>,
+    timestamp: RingBuffer<u64>,
+}
+
+impl SysinfoStats {
+    pub fn new(capacity: usize) -> Self {
+        SysinfoStats {
+            cpu_usage: Stat::new(capacity),
+            cpu_freq: Stat::new(capacity),
+            mem_free: Stat::new(capacity),
+            mem_available: Stat::new(capacity),
+            mem_buffer: Stat::new(capacity),
+            timestamp: RingBuffer::new(capacity)
+        }
+    }
+}
 
 struct CpuStat {
     freq: u64,
@@ -32,41 +83,18 @@ impl fmt::Debug for CpuStat {
 
 pub struct SysinfoData {
     sys: System,
-    cpu: RingBuffer<Vec<CpuStat>>,
-    timestamp: RingBuffer<u64>,
+    stats: SysinfoStats,
     read_interval: u64,
 }
 
-/// The generic trait for all subsystems
-pub trait SysInfo {
-    fn new() -> Self where Self: Sized;
-    fn read(&mut self);
-    fn display(&self);
-}
-
-/// Flags that control which subsystem will be active
-#[derive(Default)]
-pub struct SysInfoFlags {
-    pub cpu: bool,
-    pub mem: bool,
-    pub disk: bool,
-    pub net: bool,
-    pub sys: bool,
-}
-
-/// This function initialize the program by returning a SysInfoFlags struct based
-/// on the provided command-line arguments
 pub fn init_sys_reader(capacity: usize, interval: u64) -> SysinfoData {
     SysinfoData {
         sys: System::new_all(),
-        cpu: RingBuffer::new(capacity),
-        timestamp: RingBuffer::new(capacity),
+        stats: SysinfoStats::new(capacity),
         read_interval: interval
     }
 }
 
-/// This is a blocking function that will start the threads responsible for
-/// reading and displaying the system's info in the stdout
 pub fn run_sys_reader(sysdata: SysinfoData) -> Result<(), Error> {
     let run_flag: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let sys_arc: Arc<RwLock<SysinfoData>> = Arc::new(RwLock::new(sysdata));

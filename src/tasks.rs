@@ -13,35 +13,35 @@ use sysinfo::{ProcessorExt, System, SystemExt};
 use super::{SysinfoData, CpuStat};
 
 
-pub fn task_sysinfo_compute(sysdata: Arc<RwLock<SysinfoData>>, run_flag: Arc<RwLock<bool>>)
-    -> JoinHandle<io::Result<()>> {
+pub fn task_sysinfo_compute(sysdata: Arc<RwLock<SysinfoData>>,
+                            run_flag: Arc<RwLock<bool>>)
+                            -> JoinHandle<io::Result<()>> {
     let handle = spawn(move || {
         let interval = match sysdata.read() {
             Ok(obj) => obj.read_interval,
             _ => 5
         };
-        if let Ok(mut sysref) = sysdata.write() {
-            sleep(Duration::new(1, 0));
-        }
+        sleep(Duration::new(1, 0));
         let seconds = Duration::new(interval, 0);
         while *run_flag.read().unwrap() {
-            if let Ok(mut sysref) = sysdata.write() {
-                sysref.sys.refresh_cpu();
-                let mut cpus: Vec<CpuStat> = Vec::new();
-                for proc in sysref.sys.processors() {
-                    cpus.push( CpuStat{
-                        freq: proc.frequency(),
-                        usage: proc.cpu_usage()
-                    });
-                }
+            if let Ok(mut s) = sysdata.write() {
+                s.sys.refresh_cpu();
+                let usage = s.sys.global_processor_info().cpu_usage();
+                let freq = s.sys.global_processor_info().frequency();
+                let fmem = s.sys.free_memory();
+                let umem = s.sys.used_memory();
+                s.stats.cpu_usage.push_value(usage);
+                s.stats.cpu_freq.push_value(freq);
+                s.stats.mem_free.push_value(fmem);
+                s.stats.mem_used.push_value(umem);
                 let ts = match SystemTime::now().duration_since(UNIX_EPOCH) {
                     Ok(n) => n.as_secs(),
                     Err(_) => 0,
                 };
-                // println!("{:?} {}", cpus, ts);
-                sysref.cpu.push_back(cpus);
-                sysref.timestamp.push_back(ts);
-
+                s.stats.timestamp.push_back(ts);
+                println!("{:?} {:.2} {:.2} {:.2}", ts, s.stats.cpu_usage.max,
+                         s.stats.cpu_usage.min,
+                         s.stats.cpu_usage.avg);
             }
             sleep(seconds);
         }
@@ -56,7 +56,9 @@ pub fn task_sysinfo_show(sysdata: Arc<RwLock<SysinfoData>>, run_flag: Arc<RwLock
         let seconds = Duration::new(2, 0);
         while *run_flag.read().unwrap() {
             if let Ok(sysref) = sysdata.read() {
-                println!("{:?} {:?}", sysref.cpu, sysref.timestamp);
+                if sysref.stats.timestamp.length() > 0 {
+                    println!("{:?}", sysref.stats.timestamp);
+                }
             }
             sleep(seconds);
         }
