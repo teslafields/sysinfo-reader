@@ -9,39 +9,48 @@ use std::sync::{Arc, RwLock};
 use std::thread::{sleep, spawn, JoinHandle};
 use signal_hook::consts::signal::*;
 use signal_hook::iterator::Signals;
-use sysinfo::{ProcessorExt, System, SystemExt};
-use super::{SysinfoData, CpuStat};
+use sysinfo::{ProcessorExt, System, SystemExt, DiskExt};
+use super::SysinfoStats;
 
 
-pub fn task_sysinfo_compute(sysdata: Arc<RwLock<SysinfoData>>,
+pub fn task_sysinfo_compute(sys_lock: Arc<RwLock<System>>,
+                            sts_lock: Arc<RwLock<SysinfoStats>>,
                             run_flag: Arc<RwLock<bool>>)
                             -> JoinHandle<io::Result<()>> {
     let handle = spawn(move || {
-        let interval = match sysdata.read() {
-            Ok(obj) => obj.read_interval,
-            _ => 5
-        };
+        let interval = 2;
         sleep(Duration::new(1, 0));
         let seconds = Duration::new(interval, 0);
         while *run_flag.read().unwrap() {
-            if let Ok(mut s) = sysdata.write() {
-                s.sys.refresh_cpu();
-                let usage = s.sys.global_processor_info().cpu_usage();
-                let freq = s.sys.global_processor_info().frequency();
-                let fmem = s.sys.free_memory();
-                let umem = s.sys.used_memory();
-                s.stats.cpu_usage.push_value(usage);
-                s.stats.cpu_freq.push_value(freq);
-                s.stats.mem_free.push_value(fmem);
-                s.stats.mem_used.push_value(umem);
-                let ts = match SystemTime::now().duration_since(UNIX_EPOCH) {
-                    Ok(n) => n.as_secs(),
-                    Err(_) => 0,
-                };
-                s.stats.timestamp.push_back(ts);
-                println!("{:?} {:.2} {:.2} {:.2}", ts, s.stats.cpu_usage.max,
-                         s.stats.cpu_usage.min,
-                         s.stats.cpu_usage.avg);
+            if let Ok(mut sys) = sys_lock.write() {
+                sys.refresh_cpu();
+                sys.refresh_memory();
+                sys.refresh_disks();
+                let usage = sys.global_processor_info().cpu_usage();
+                let freq = sys.global_processor_info().frequency();
+                let fmem = sys.free_memory();
+                let umem = sys.used_memory();
+                let amem = sys.available_memory();
+                if let Ok(mut sts) = sts_lock.write() {
+                    for disk in sys.disks() {
+                        let name = disk.name().to_str().unwrap_or("").to_string();
+                        if let Some(buf) = sts.disks_usage.get_mut(&name) {
+                            buf.push_back(disk.total_space() -
+                                          disk.available_space());
+                        }
+                    }
+                    sts.cpu_usage.push_back(usage);
+                    sts.cpu_freq.push_back(freq);
+                    sts.mem_free.push_back(fmem);
+                    sts.mem_used.push_back(umem);
+                    sts.mem_available.push_back(amem);
+                    let ts = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                        Ok(n) => n.as_secs(),
+                        Err(_) => 0,
+                    };
+                    sts.timestamp.push_back(ts);
+                }
+
             }
             sleep(seconds);
         }
@@ -50,14 +59,30 @@ pub fn task_sysinfo_compute(sysdata: Arc<RwLock<SysinfoData>>,
     handle
 }
 
-pub fn task_sysinfo_show(sysdata: Arc<RwLock<SysinfoData>>, run_flag: Arc<RwLock<bool>>)
+pub fn task_sysinfo_show(sys_lock: Arc<RwLock<System>>,
+                         sts_lock: Arc<RwLock<SysinfoStats>>,
+                         run_flag: Arc<RwLock<bool>>)
         ->  JoinHandle<()> {
     let handle = spawn(move || {
         let seconds = Duration::new(2, 0);
         while *run_flag.read().unwrap() {
-            if let Ok(sysref) = sysdata.read() {
-                if sysref.stats.timestamp.length() > 0 {
-                    println!("{:?}", sysref.stats.timestamp);
+            if let Ok(sys) = sys_lock.read() {
+                if let Ok(sts) = sts_lock.read() {
+                    println!("========================================================");
+                    println!("UPTIME: {} CPU_CORES: {} TOTAL_MEM: {} TOTAL_SWAP: {} \
+                             NAME: {}", sys.uptime(),
+                             sys.physical_core_count().unwrap_or(0),
+                             sys.total_memory(), sys.total_swap(),
+                             sys.name().unwrap_or("".to_string()));
+                    println!("TIMESTAMP:  {:?}", sts.timestamp);
+                    println!("CPU_USAGE:  {:?}", sts.cpu_usage);
+                    println!("CPU_FREQ:   {:?}", sts.cpu_freq);
+                    println!("MEM_FREE:   {:?}", sts.mem_free);
+                    println!("MEM_USED:   {:?}", sts.mem_used);
+                    println!("DISK_USAGE:");
+                    for (name, buf) in sts.disks_usage.iter() {
+                        println!(" {:?}: {:?}", name, buf);
+                    }
                 }
             }
             sleep(seconds);

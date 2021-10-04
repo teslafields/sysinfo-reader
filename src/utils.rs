@@ -1,50 +1,78 @@
-use std::fmt;
-use std::iter::IntoIterator;
+use std::fmt::{Formatter, Debug, Display, Result as ResultFmt};
+use std::cmp::PartialOrd;
+use std::ops::AddAssign;
 use std::fs::File;
 use std::io::prelude::*;
 use std::collections::VecDeque;
 use std::collections::vec_deque::Iter;
+use num_traits::{Num, NumCast};
+use std::iter::Sum;
 
 
-pub struct RingBuffer<T>(VecDeque<T>, usize);
+pub struct RingStatsBuffer<T> {
+    buff: VecDeque<T>,
+    pub max: T,
+    pub min: T,
+    avg: T
+}
 
-impl<T> RingBuffer<T> {
+impl<T> RingStatsBuffer<T> 
+where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum 
+{
     pub fn new(capacity: usize) -> Self {
-        RingBuffer(VecDeque::with_capacity(capacity), capacity)
+        RingStatsBuffer{
+            buff: VecDeque::with_capacity(capacity),
+            max: NumCast::from(u32::MIN).unwrap(),
+            min: NumCast::from(u32::MAX).unwrap(),
+            avg: T::default()
+        }
     }
 
-    pub fn length(&self) -> usize {
-        self.0.len()
+    pub fn len(&self) -> usize {
+        self.buff.len()
     }
 
     pub fn iter(&self) -> Iter<T> {
-        self.0.iter()
+        self.buff.iter()
     }
 
     pub fn push_back(&mut self, item: T) {
-        if self.0.len() >= self.1 {
-            let _ = self.0.pop_front();
+        if self.buff.len() >= self.buff.capacity() {
+            let _ = self.buff.pop_front();
         }
-        self.0.push_back(item);
+        if item > self.max { self.max = item }
+        if item < self.min { self.min = item }
+        self.buff.push_back(item);
+        self.calc_avg();
     }
 
-    pub fn pop_pront(&mut self) {
-        let _ = self.0.pop_front();
+    pub fn pop_front(&mut self) -> Option<T> {
+        self.buff.pop_front()
+    }
+
+    pub fn get_last(&self) -> Option<T> {
+        if self.buff.len() == 0 {
+            return None;
+        }
+        let val = self.buff.get(self.buff.len()-1);
+        val.copied()
+    }
+
+    pub fn as_slices(&self) -> (&[T], &[T]) {
+        self.buff.as_slices()
+    }
+
+    pub fn calc_avg(&mut self) {
+        if self.buff.len() > 0 {
+            let sum: T = self.buff.iter().copied().sum();
+            self.avg = sum/NumCast::from(self.buff.len()).unwrap();
+        }
     }
 }
 
-impl<'a, T> IntoIterator for &'a RingBuffer<T> {
-    type Item = &'a T;
-    type IntoIter = Iter<'a, T>;
-
-    fn into_iter(self) -> Iter<'a, T> {
-        self.0.iter()
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for RingBuffer<T> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_list().entries(self.0.iter()).finish()
+impl<T: Debug + Display> Debug for RingStatsBuffer<T> {
+    fn fmt(&self, f: &mut Formatter) -> ResultFmt {
+        f.write_fmt(format_args!("Min {:10.2} Max: {:10.2} Avg: {:10.2} Buff: {:?}", self.min, self.max, self.avg, self.buff))
     }
 }
 

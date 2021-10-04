@@ -11,95 +11,70 @@ extern crate num_traits;
 
 use std::io::Error;
 use std::sync::{Arc, RwLock};
-use std::fmt;
-use std::default::Default;
-use std::cmp::PartialOrd;
-use std::iter::Sum;
-use num::{Num, NumCast};
-use sysinfo::{System, SystemExt};
-use crate::utils::RingBuffer;
-use std::ops::{Add, Mul, Div, Sub, AddAssign};
+use std::collections::HashMap;
+use sysinfo::{System, SystemExt, DiskExt};
+use crate::utils::RingStatsBuffer;
 
 
-struct Stat<T> {
-    buff: RingBuffer<T>,
-    pub max: T,
-    pub min: T,
-    avg: T
-}
-
-impl<T> Stat<T> 
-where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum
-{
-    pub fn new(capacity: usize) -> Self {
-        Stat {
-            buff: RingBuffer::new(capacity),
-            max: NumCast::from(u32::MIN).unwrap(),
-            min: NumCast::from(u32::MAX).unwrap(),
-            avg: T::default()
-        }   
-    }   
-
-    pub fn push_value(&mut self, val: T) {
-        if val > self.max { self.max = val }
-        if val < self.min { self.min = val }
-        self.buff.push_back(val);
-        let sum: T = self.buff.iter().copied().sum();
-        self.avg = sum/NumCast::from(self.buff.length()).unwrap();
-    }
-}
-
-struct SysinfoStats {
-    cpu_usage: Stat<f32>,
-    cpu_freq: Stat<u64>,
-    mem_free: Stat<u64>,
-    mem_used: Stat<u64>,
-    timestamp: RingBuffer<u64>,
+pub struct SysinfoStats {
+    pub cpu_usage: RingStatsBuffer<f32>,
+    pub cpu_freq: RingStatsBuffer<u64>,
+    pub mem_free: RingStatsBuffer<u64>,
+    pub mem_used: RingStatsBuffer<u64>,
+    pub mem_available: RingStatsBuffer<u64>,
+    pub mem_buffer: RingStatsBuffer<u64>,
+    pub disks_usage: HashMap<String, RingStatsBuffer<u64>>,
+    pub timestamp: RingStatsBuffer<u64>,
 }
 
 impl SysinfoStats {
     pub fn new(capacity: usize) -> Self {
         SysinfoStats {
-            cpu_usage: Stat::new(capacity),
-            cpu_freq: Stat::new(capacity),
-            mem_free: Stat::new(capacity),
-            mem_available: Stat::new(capacity),
-            mem_buffer: Stat::new(capacity),
-            timestamp: RingBuffer::new(capacity)
+            cpu_usage: RingStatsBuffer::new(capacity),
+            cpu_freq: RingStatsBuffer::new(capacity),
+            mem_free: RingStatsBuffer::new(capacity),
+            mem_used: RingStatsBuffer::new(capacity),
+            mem_available: RingStatsBuffer::new(capacity),
+            mem_buffer: RingStatsBuffer::new(capacity),
+            disks_usage: HashMap::new(),
+            timestamp: RingStatsBuffer::new(capacity)
+        }
+    }
+
+    pub fn build_dynamic_values(&mut self, capacity: usize, disks: &Vec<String>) {
+        for d in disks {
+            self.disks_usage.insert(d.to_string(), RingStatsBuffer::new(capacity));
         }
     }
 }
 
-struct CpuStat {
-    freq: u64,
-    usage: f32
+pub fn init_sys_reader(capacity: usize, interval: u64) -> (System, SysinfoStats) {
+    let sys = System::new_all();
+    let mut sts = SysinfoStats::new(capacity);
+    let mut disks: Vec<String> = sys.disks().iter()
+        .filter_map(|x| {
+            if let Some(x) = x.name().to_str() {
+                return Some(x.to_string());
+            }
+            None
+        })
+        .collect();
+    disks.dedup();
+    println!("DISKS: {:?}", disks);
+    sts.build_dynamic_values(capacity, &disks);
+    (sys, sts)
 }
 
-impl fmt::Debug for CpuStat {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_tuple("").field(&self.freq).field(&self.usage).finish()
-    }
-}
-
-pub struct SysinfoData {
-    sys: System,
-    stats: SysinfoStats,
-    read_interval: u64,
-}
-
-pub fn init_sys_reader(capacity: usize, interval: u64) -> SysinfoData {
-    SysinfoData {
-        sys: System::new_all(),
-        stats: SysinfoStats::new(capacity),
-        read_interval: interval
-    }
-}
-
-pub fn run_sys_reader(sysdata: SysinfoData) -> Result<(), Error> {
+pub fn run_sys_reader(sys: System, sts: SysinfoStats) -> Result<(), Error> {
     let run_flag: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
-    let sys_arc: Arc<RwLock<SysinfoData>> = Arc::new(RwLock::new(sysdata));
-    let h1 = tasks::task_sysinfo_compute(Arc::clone(&sys_arc), Arc::clone(&run_flag));
-    let h2 = tasks::task_sysinfo_show(Arc::clone(&sys_arc), Arc::clone(&run_flag));
+    let sys_lock: Arc<RwLock<System>> = Arc::new(RwLock::new(sys));
+    let sts_lock: Arc<RwLock<SysinfoStats>> = Arc::new(RwLock::new(sts));
+    let h1 = tasks::task_sysinfo_compute(Arc::clone(&sys_lock),
+                                         Arc::clone(&sts_lock),
+                                         Arc::clone(&run_flag));
+    let h2 = tasks::task_sysinfo_show(Arc::clone(&sys_lock),
+                                      Arc::clone(&sts_lock),
+                                      Arc::clone(&run_flag));
     tasks::task_handle_signals(Arc::clone(&run_flag))?;
     let _ = h1.join().unwrap();
     let _ = h2.join().unwrap();

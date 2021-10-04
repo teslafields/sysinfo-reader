@@ -15,5 +15,4 @@ signal-hook = "0.3.10"
 libc = "0.2.101"
 sysinfo = "0.20.3"
 num-traits = "0.2.14"
-num = "0.4.0"
 
