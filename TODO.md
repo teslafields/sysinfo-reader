@@ -1,0 +1,5 @@
+- Create opt flag for reseting stats values;
+- Integration with JSON;
+- Integration with REST HTTP;
+- Integration with Perf;
+- Web page with dashboards.
