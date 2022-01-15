@@ -9,22 +9,28 @@ use std::iter::Sum;
 
 pub struct RingStatsBuffer<T> {
     buff: VecDeque<T>,
-    pub max: T,
-    pub min: T,
-    pub avg: T,
-    acc: usize
+    cur_max: T,
+    cur_min: T,
+    max: T,
+    min: T,
+    avg: T,
+    ite: usize,
+    rst: bool,
 }
 
 impl<T> RingStatsBuffer<T> 
 where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum 
 {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize, rst: bool) -> Self {
         RingStatsBuffer{
             buff: VecDeque::with_capacity(capacity),
-            max: NumCast::from(u32::MIN).unwrap(),
-            min: NumCast::from(u32::MAX).unwrap(),
             avg: NumCast::from(u32::MIN).unwrap(),
-            acc: 0
+            cur_max: NumCast::from(u32::MIN).unwrap(),
+            cur_min: NumCast::from(u32::MAX).unwrap(),
+            max: NumCast::from(0).unwrap(),
+            min: NumCast::from(0).unwrap(),
+            ite: 0,
+            rst: rst,
         }
     }
 
@@ -40,23 +46,17 @@ where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum
         self.buff.iter()
     }
 
-    fn reset_stats(&mut self) {
-        self.min = NumCast::from(u32::MIN).unwrap();
-        self.max = NumCast::from(u32::MAX).unwrap();
-        self.avg = NumCast::from(u32::MIN).unwrap();
-    }
-
     pub fn push_back(&mut self, item: T) {
         if self.buff.len() >= self.buff.capacity() {
             let _ = self.buff.pop_front();
         }
-        if item > self.max { self.max = item }
-        if item < self.min { self.min = item }
+        if item > self.cur_max { self.cur_max = item }
+        if item < self.cur_min { self.cur_min = item }
         self.buff.push_back(item);
-        self.acc += 1;
-        if self.acc >= self.buff.capacity() {
-            self.calc_avg();
-            self.acc = 0;
+        self.ite += 1;
+        if self.ite >= self.buff.capacity() {
+            self.calc_stats();
+            self.ite = 0;
         }
     }
 
@@ -76,12 +76,43 @@ where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum
         self.buff.as_slices()
     }
 
-    pub fn calc_avg(&mut self) {
+    pub fn get_min(&self) -> T {
+        self.cur_min
+    }
+
+    pub fn get_max(&self) -> T {
+        self.cur_max
+    }
+
+    pub fn get_last_min(&self) -> T {
+        self.min
+    }
+
+    pub fn get_last_max(&self) -> T {
+        self.max
+    }
+
+    pub fn get_avg(&self) -> T {
+        self.avg
+    }
+
+    pub fn calc_stats(&mut self) {
         if self.buff.len() > 0 {
             let sum: T = self.buff.iter().copied().sum();
             self.avg = sum/NumCast::from(self.buff.len()).unwrap();
+            self.max = self.cur_max;
+            self.min = self.cur_min;
+            if self.rst {
+                self.reset_stats();
+            }
         }
     }
+
+    fn reset_stats(&mut self) {
+        self.cur_min = NumCast::from(u32::MAX).unwrap();
+        self.cur_max = NumCast::from(u32::MIN).unwrap();
+    }
+
 }
 
 impl<T: Debug + Display> Debug for RingStatsBuffer<T> {
@@ -92,17 +123,29 @@ impl<T: Debug + Display> Debug for RingStatsBuffer<T> {
 
 #[test]
 fn test_ring_stats_buffer() {
-    let mut sts: RingStatsBuffer<u32> = RingStatsBuffer::new(3);
+    let mut sts: RingStatsBuffer<u32> = RingStatsBuffer::new(3, false);
     sts.push_back(2);
     sts.push_back(3);
     sts.push_back(4);
-    assert_eq!(sts.avg, 3);
+    assert_eq!(sts.get_avg(), 3);
     sts.push_back(5);
     assert_eq!(sts.capacity(), 3);
-    sts.calc_avg();
-    assert_eq!(sts.avg, 4);
+    sts.calc_stats();
+    assert_eq!(sts.get_avg(), 4);
+    assert_eq!(sts.get_max(), 5);
+    assert_eq!(sts.get_min(), 2);
     assert_eq!(sts.get_last(), Some(5));
     assert_eq!(sts.pop_front(), Some(3));
     assert_eq!(sts.len(), 2);
+    let mut sts: RingStatsBuffer<u32> = RingStatsBuffer::new(3, true);
+    sts.push_back(5);
+    sts.push_back(1);
+    sts.push_back(3);
+    sts.push_back(4);
+    sts.push_back(2);
+    assert_eq!(sts.get_max(), 4);
+    assert_eq!(sts.get_min(), 2);
+    assert_eq!(sts.get_last_max(), 5);
+    assert_eq!(sts.get_last_min(), 1);
 }
 

@@ -6,6 +6,7 @@
 pub mod utils;
 pub mod tasks;
 pub mod ringbuf;
+pub mod http;
 
 extern crate sysinfo;
 extern crate num_traits;
@@ -17,6 +18,7 @@ use getopts::{Matches, Options};
 use std::collections::HashMap;
 use sysinfo::{System, SystemExt, DiskExt, NetworksExt};
 use crate::ringbuf::RingStatsBuffer;
+use crate::http::server;
 
 
 // const CAPACITY: usize = 120;
@@ -30,6 +32,7 @@ const MAX_WINDOW: u32 = 24*60*60; // 24 hours
 pub struct SysinfoOpts {
     pub sampling_freq: u32,
     pub time_window: u32,
+    pub reset_flag: bool,
 }
 impl PartialEq for SysinfoOpts {
     fn eq(&self, other: &Self) -> bool {
@@ -56,31 +59,32 @@ pub struct SysinfoStats {
 }
 
 impl SysinfoStats {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize, rst_flag: bool) -> Self {
         SysinfoStats {
-            cpu_usage: RingStatsBuffer::new(capacity),
-            cpu_freq: RingStatsBuffer::new(capacity),
-            mem_free: RingStatsBuffer::new(capacity),
-            mem_used: RingStatsBuffer::new(capacity),
-            mem_available: RingStatsBuffer::new(capacity),
-            mem_buffer: RingStatsBuffer::new(capacity),
+            cpu_usage: RingStatsBuffer::new(capacity, rst_flag),
+            cpu_freq: RingStatsBuffer::new(capacity, rst_flag),
+            mem_free: RingStatsBuffer::new(capacity, rst_flag),
+            mem_used: RingStatsBuffer::new(capacity, rst_flag),
+            mem_available: RingStatsBuffer::new(capacity, rst_flag),
+            mem_buffer: RingStatsBuffer::new(capacity, rst_flag),
             disk_usage: HashMap::new(),
             networks: HashMap::new(),
-            timestamp: RingStatsBuffer::new(capacity)
+            timestamp: RingStatsBuffer::new(capacity, rst_flag)
         }
     }
 
-    pub fn build_dynamic_values(&mut self, capacity: usize, disks: &Vec<&str>,
+    pub fn build_dynamic_values(&mut self, capacity: usize,
+                                rst_flag: bool, disks: &Vec<&str>,
                                 networks: &Vec<&str>) {
         for d in disks {
-            self.disk_usage.insert(d.to_string(), RingStatsBuffer::new(capacity));
+            self.disk_usage.insert(d.to_string(), RingStatsBuffer::new(capacity, rst_flag));
         }
         for n in networks {
             self.networks.insert(
                 n.to_string(),
                 NetworkBytes {
-                    rx_bytes: RingStatsBuffer::new(capacity),
-                    tx_bytes: RingStatsBuffer::new(capacity)
+                    rx_bytes: RingStatsBuffer::new(capacity, rst_flag),
+                    tx_bytes: RingStatsBuffer::new(capacity, rst_flag)
                 }
             );
         }
@@ -100,6 +104,7 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
     let mut sysopts = SysinfoOpts::default();
     let mut opts = Options::new();
     opts.optopt("t", "time", "time window period", "MINUTES");
+    opts.optflag("r", "reset", "reset max and min upon new time window");
     opts.optflag("h", "help", "print this help menu");
     let matches: Option<Matches> = match opts.parse(&args[1..]) {
         Ok(m) => Some(m),
@@ -114,6 +119,11 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
     if matches.opt_present("h") {
         print_usage(&program, &opts);
         return None;
+    }
+    if matches.opt_present("r") {
+        sysopts.reset_flag = true;
+    } else {
+        sysopts.reset_flag = false;
     }
     if let Some(str_val) = matches.opt_str("t") {
         if let Ok(val) = str_val.parse::<u32>() {
@@ -141,9 +151,9 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
     Some(sysopts)
 }
 
-pub fn init_sys_reader() -> (System, SysinfoStats) {
+pub fn init_sys_reader(opts: &SysinfoOpts) -> (System, SysinfoStats) {
     let sys = System::new_all();
-    let mut sts = SysinfoStats::new(CAPACITY);
+    let mut sts = SysinfoStats::new(CAPACITY, opts.reset_flag);
     let mut disks: Vec<&str> = sys.disks().iter()
         .filter_map(|x| {
             if let Some(x) = x.name().to_str() {
@@ -159,7 +169,7 @@ pub fn init_sys_reader() -> (System, SysinfoStats) {
         .collect();
 
     println!("NETS: {:?}", nets);
-    sts.build_dynamic_values(CAPACITY, &disks, &nets);
+    sts.build_dynamic_values(CAPACITY, opts.reset_flag, &disks, &nets);
     (sys, sts)
 }
 
@@ -175,9 +185,12 @@ pub fn run_sys_reader(opts: SysinfoOpts, sys: System, sts: SysinfoStats)
     let h2 = tasks::task_sysinfo_show(Arc::clone(&sys_lock),
                                       Arc::clone(&sts_lock),
                                       Arc::clone(&run_flag));
+    let server_handler = server::start_server();
+
     tasks::task_handle_signals(Arc::clone(&run_flag))?;
     let _ = h1.join().unwrap();
     let _ = h2.join().unwrap();
+    server::stop_server(&server_handler);
     Ok(())
 }
 
@@ -205,19 +218,19 @@ fn test_init_opts() {
     let window = MAX_WINDOW;
     let t4 = [a[0].clone(), a[2].clone(), max.to_string()];
     assert_eq!(init_opts(&t4),
-               Some(SysinfoOpts { sampling_freq: freq, time_window: window }));
+               Some(SysinfoOpts { sampling_freq: freq, time_window: window, reset_flag: true }));
     // Test valid option lower bound
     let min = MIN_WINDOW - 4;
     let freq = MIN_WINDOW/(CAPACITY as u32);
     let window = MIN_WINDOW;
     let t5 = [a[0].clone(), a[2].clone(), min.to_string()];
     assert_eq!(init_opts(&t5),
-               Some(SysinfoOpts { sampling_freq: freq, time_window: window }));
+               Some(SysinfoOpts { sampling_freq: freq, time_window: window, reset_flag: true }));
     // Test allowed values
     let val: u32 = (MAX_WINDOW - MIN_WINDOW)/2;
     let freq = val/(CAPACITY as u32);
     let window = val;
     let t6 = [a[0].clone(), a[2].clone(), val.to_string()];
     assert_eq!(init_opts(&t6),
-               Some(SysinfoOpts { sampling_freq: freq, time_window: window }));
+               Some(SysinfoOpts { sampling_freq: freq, time_window: window, reset_flag: true }));
 }

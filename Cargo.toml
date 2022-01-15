@@ -16,4 +16,14 @@ libc = "0.2.101"
 sysinfo = "0.20.3"
 num-traits = "0.2.14"
 getopts = "0.2.21"
+actix-web = "3"
+actix-service = "1.0.0"
+futures = "0.3"
+env_logger = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+json = "0.12"
+serde_derive = "1.0.133"
 
+[dev-dependencies]
+actix-rt = "1"
