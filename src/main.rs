@@ -9,8 +9,9 @@ fn main() -> Result<(), Error> {
         Some(opts) => opts,
         None => std::process::exit(1)
     };
-    //std::process::exit(1);
+
     let (sys, sts) = init_sys_reader(&opts);
+
     run_sys_reader(opts, sys, sts)?;
     Ok(())
 }

@@ -57,7 +57,6 @@ pub fn task_sysinfo_compute(sys_opts: SysinfoOpts,
                             run_flag: Arc<RwLock<bool>>)
                             -> JoinHandle<io::Result<()>> {
     let handle = spawn(move || {
-        let interval = 2;
         let read_interval = Duration::new(sys_opts.sampling_freq as u64, 0);
         let sleep_res = Duration::new(1, 0);
         let mut now = Instant::now();

@@ -7,6 +7,7 @@ pub mod utils;
 pub mod tasks;
 pub mod ringbuf;
 pub mod http;
+pub mod schema;
 
 extern crate sysinfo;
 extern crate num_traits;
@@ -106,16 +107,14 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
     opts.optopt("t", "time", "time window period", "MINUTES");
     opts.optflag("r", "reset", "reset max and min upon new time window");
     opts.optflag("h", "help", "print this help menu");
-    let matches: Option<Matches> = match opts.parse(&args[1..]) {
-        Ok(m) => Some(m),
+    let matches: Matches = match opts.parse(&args[1..]) {
+        Ok(m) => m,
         Err(f) => {
             println!("{}", f.to_string());
             print_usage(&program, &opts);
-            None
+            return None;
         }
     };
-    matches.is_none() && return None;
-    let matches = matches.unwrap();
     if matches.opt_present("h") {
         print_usage(&program, &opts);
         return None;
@@ -143,10 +142,6 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
     }
     sysopts.sampling_freq = sysopts.time_window/(CAPACITY as u32);
     println!("{:?}", sysopts);
-
-    // if !matches.free.is_empty() {
-    //     matches.free[1].clone()
-    // }
 
     Some(sysopts)
 }
@@ -182,14 +177,15 @@ pub fn run_sys_reader(opts: SysinfoOpts, sys: System, sts: SysinfoStats)
                                          Arc::clone(&sys_lock),
                                          Arc::clone(&sts_lock),
                                          Arc::clone(&run_flag));
-    let h2 = tasks::task_sysinfo_show(Arc::clone(&sys_lock),
-                                      Arc::clone(&sts_lock),
-                                      Arc::clone(&run_flag));
-    let server_handler = server::start_server();
+    //let h2 = tasks::task_sysinfo_show(Arc::clone(&sys_lock),
+    //                                  Arc::clone(&sts_lock),
+    //                                  Arc::clone(&run_flag));
+
+    let server_handler = server::start_server(Arc::clone(&sts_lock));
 
     tasks::task_handle_signals(Arc::clone(&run_flag))?;
     let _ = h1.join().unwrap();
-    let _ = h2.join().unwrap();
+    //let _ = h2.join().unwrap();
     server::stop_server(&server_handler);
     Ok(())
 }
