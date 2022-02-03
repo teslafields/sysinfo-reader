@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use num_traits::NumCast;
 use serde::{ser::{Serializer, SerializeStruct}, Serialize};
 use crate::systats::SysinfoStats;

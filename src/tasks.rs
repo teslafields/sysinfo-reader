@@ -48,7 +48,6 @@ fn read_sysinfo(sys_lock: &RwLock<System>, sts_lock: &RwLock<SysinfoStats>) {
                 Err(_) => 0,
             };
             sts.timestamp.push_back(ts);
-            sts.build_schema();
         }
     }
 }

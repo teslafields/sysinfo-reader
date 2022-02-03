@@ -16,10 +16,12 @@ extern crate getopts;
 
 use std::io::Error;
 use std::sync::{Arc, RwLock};
+use signal_hook::consts::signal::*;
+use signal_hook::iterator::Signals;
 use getopts::{Matches, Options};
 use sysinfo::{System, SystemExt};
-use crate::systats::{SysinfoStats, start_reader, init_reader};
-use crate::schema::{SysinfoSchemaBuilder, SysinfoSchema};
+use crate::systats::SystatsExecutor;
+use crate::schema::SysinfoSchemaBuilder;
 use crate::http::server;
 
 
@@ -98,55 +100,37 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
     Some(sysopts)
 }
 
-//pub fn init_sys_reader(opts: &SysinfoOpts) -> (System, SysinfoStats) {
-//    let sys = System::new_all();
-//    let mut sts = SysinfoStats::new(CAPACITY, opts.reset_flag);
-//    let mut disks: Vec<&str> = sys.disks().iter()
-//        .filter_map(|x| {
-//            if let Some(x) = x.name().to_str() {
-//                return Some(x);
-//            }
-//            None
-//        })
-//        .collect();
-//    disks.dedup();
-//    println!("DISKS: {:?}", disks);
-//    let nets: Vec<&str> = sys.networks().iter()
-//        .map(|(k, _v)| k.as_str())
-//        .collect();
-//
-//    println!("NETS: {:?}", nets);
-//    sts.build_dynamic_values(CAPACITY, opts.reset_flag, &disks, &nets);
-//    (sys, sts)
-//}
+pub fn handle_signals(run_flag: Arc<RwLock<bool>>) -> Result<(), Error> {
+    let mut signals = Signals::new(&[
+        SIGHUP,
+        SIGTERM,
+        SIGINT,
+        SIGQUIT,
+    ])?;
+    for signal in signals.forever() {
+        match signal as libc::c_int {
+            SIGHUP | SIGTERM | SIGINT | SIGQUIT => {
+                {
+                    let mut flag = run_flag.write().unwrap();
+                    *flag = false;
+                    break;
+                }
+            },
+            _ => unreachable!(),
+        }
+    }
+    Ok(())
+}
 
-//pub fn run_sys_reader(opts: SysinfoOpts, sys: System, sts: SysinfoStats)
-//                      -> Result<(), Error> {
-pub fn run_sys_reader(opts: SysinfoOpts)
-                      -> Result<(), Error> {
-    let sys = System::new_all();
-    let sts = init_reader(&opts, &sys, CAPACITY); 
+pub fn run_sys_reader(opts: SysinfoOpts) -> Result<(), Error> {
     let run_flag: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
-    let schema: Arc<SysinfoSchemaBuilder> = sts.get_schema_builder();
-    let sys_lock: Arc<RwLock<System>> = Arc::new(RwLock::new(sys));
-    let sts_lock: Arc<RwLock<SysinfoStats>> = Arc::new(RwLock::new(sts));
-    //let builder = Builder::new(Arc::clone(&sts_lock));
-    let h1 = start_reader(opts,
-                          Arc::clone(&sys_lock),
-                          Arc::clone(&sts_lock),
-                          Arc::clone(&run_flag));
-
-    //let h1 = tasks::task_sysinfo_compute(opts,
-    //                                     Arc::clone(&sys_lock),
-    //                                     Arc::clone(&sts_lock),
-    //                                     Arc::clone(&run_flag));
-    //let h2 = tasks::task_sysinfo_show(Arc::clone(&sys_lock),
-    //                                  Arc::clone(&sts_lock),
-    //                                  Arc::clone(&run_flag));
-
+    let sysinfo = System::new_all();
+    let schema: Arc<SysinfoSchemaBuilder> = Arc::new(SysinfoSchemaBuilder::new());
+    let systats_executor = SystatsExecutor::new(opts, Arc::clone(&schema)); 
+    let h1 = systats_executor.run_executor(sysinfo, Arc::clone(&run_flag));
     let server_handler = server::start_server(Arc::clone(&schema));
 
-    tasks::task_handle_signals(Arc::clone(&run_flag))?;
+    handle_signals(Arc::clone(&run_flag))?;
     let _ = h1.join().unwrap();
     //let _ = h2.join().unwrap();
     server::stop_server(&server_handler);
