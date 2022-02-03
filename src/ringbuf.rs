@@ -117,7 +117,11 @@ where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum
 
 impl<T: Debug + Display> Debug for RingStatsBuffer<T> {
     fn fmt(&self, f: &mut Formatter) -> ResultFmt {
-        f.write_fmt(format_args!("Min {:10.2} Max: {:10.2} Avg: {:10.2} Buff: {:?}", self.min, self.max, self.avg, self.buff))
+        if f.alternate() {
+            f.write_fmt(format_args!("Min {:10.2} Max: {:10.2} Avg: {:10.2} Buff: {:?}", self.min, self.max, self.avg, self.buff))
+        } else {
+            f.write_fmt(format_args!("Min {:10.2} Max: {:10.2} Avg: {:10.2}", self.min, self.max, self.avg))
+        }
     }
 }
 

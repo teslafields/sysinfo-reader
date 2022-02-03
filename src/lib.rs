@@ -8,6 +8,7 @@ pub mod tasks;
 pub mod ringbuf;
 pub mod http;
 pub mod schema;
+pub mod systats;
 
 extern crate sysinfo;
 extern crate num_traits;
@@ -16,9 +17,9 @@ extern crate getopts;
 use std::io::Error;
 use std::sync::{Arc, RwLock};
 use getopts::{Matches, Options};
-use std::collections::HashMap;
-use sysinfo::{System, SystemExt, DiskExt, NetworksExt};
-use crate::ringbuf::RingStatsBuffer;
+use sysinfo::{System, SystemExt};
+use crate::systats::{SysinfoStats, start_reader, init_reader};
+use crate::schema::{SysinfoSchemaBuilder, SysinfoSchema};
 use crate::http::server;
 
 
@@ -42,55 +43,6 @@ impl PartialEq for SysinfoOpts {
     }
 }
 
-pub struct NetworkBytes {
-    pub rx_bytes: RingStatsBuffer<u64>,
-    pub tx_bytes: RingStatsBuffer<u64>
-}
-
-pub struct SysinfoStats {
-    pub cpu_usage: RingStatsBuffer<f32>,
-    pub cpu_freq: RingStatsBuffer<u64>,
-    pub mem_free: RingStatsBuffer<u64>,
-    pub mem_used: RingStatsBuffer<u64>,
-    pub mem_available: RingStatsBuffer<u64>,
-    pub mem_buffer: RingStatsBuffer<u64>,
-    pub disk_usage: HashMap<String, RingStatsBuffer<u64>>,
-    pub networks: HashMap<String, NetworkBytes>,
-    pub timestamp: RingStatsBuffer<u64>,
-}
-
-impl SysinfoStats {
-    pub fn new(capacity: usize, rst_flag: bool) -> Self {
-        SysinfoStats {
-            cpu_usage: RingStatsBuffer::new(capacity, rst_flag),
-            cpu_freq: RingStatsBuffer::new(capacity, rst_flag),
-            mem_free: RingStatsBuffer::new(capacity, rst_flag),
-            mem_used: RingStatsBuffer::new(capacity, rst_flag),
-            mem_available: RingStatsBuffer::new(capacity, rst_flag),
-            mem_buffer: RingStatsBuffer::new(capacity, rst_flag),
-            disk_usage: HashMap::new(),
-            networks: HashMap::new(),
-            timestamp: RingStatsBuffer::new(capacity, rst_flag)
-        }
-    }
-
-    pub fn build_dynamic_values(&mut self, capacity: usize,
-                                rst_flag: bool, disks: &Vec<&str>,
-                                networks: &Vec<&str>) {
-        for d in disks {
-            self.disk_usage.insert(d.to_string(), RingStatsBuffer::new(capacity, rst_flag));
-        }
-        for n in networks {
-            self.networks.insert(
-                n.to_string(),
-                NetworkBytes {
-                    rx_bytes: RingStatsBuffer::new(capacity, rst_flag),
-                    tx_bytes: RingStatsBuffer::new(capacity, rst_flag)
-                }
-            );
-        }
-    }
-}
 
 fn print_usage(program: &str, opts: &Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -146,42 +98,53 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
     Some(sysopts)
 }
 
-pub fn init_sys_reader(opts: &SysinfoOpts) -> (System, SysinfoStats) {
-    let sys = System::new_all();
-    let mut sts = SysinfoStats::new(CAPACITY, opts.reset_flag);
-    let mut disks: Vec<&str> = sys.disks().iter()
-        .filter_map(|x| {
-            if let Some(x) = x.name().to_str() {
-                return Some(x);
-            }
-            None
-        })
-        .collect();
-    disks.dedup();
-    println!("DISKS: {:?}", disks);
-    let nets: Vec<&str> = sys.networks().iter()
-        .map(|(k, _v)| k.as_str())
-        .collect();
+//pub fn init_sys_reader(opts: &SysinfoOpts) -> (System, SysinfoStats) {
+//    let sys = System::new_all();
+//    let mut sts = SysinfoStats::new(CAPACITY, opts.reset_flag);
+//    let mut disks: Vec<&str> = sys.disks().iter()
+//        .filter_map(|x| {
+//            if let Some(x) = x.name().to_str() {
+//                return Some(x);
+//            }
+//            None
+//        })
+//        .collect();
+//    disks.dedup();
+//    println!("DISKS: {:?}", disks);
+//    let nets: Vec<&str> = sys.networks().iter()
+//        .map(|(k, _v)| k.as_str())
+//        .collect();
+//
+//    println!("NETS: {:?}", nets);
+//    sts.build_dynamic_values(CAPACITY, opts.reset_flag, &disks, &nets);
+//    (sys, sts)
+//}
 
-    println!("NETS: {:?}", nets);
-    sts.build_dynamic_values(CAPACITY, opts.reset_flag, &disks, &nets);
-    (sys, sts)
-}
-
-pub fn run_sys_reader(opts: SysinfoOpts, sys: System, sts: SysinfoStats)
+//pub fn run_sys_reader(opts: SysinfoOpts, sys: System, sts: SysinfoStats)
+//                      -> Result<(), Error> {
+pub fn run_sys_reader(opts: SysinfoOpts)
                       -> Result<(), Error> {
+    let sys = System::new_all();
+    let sts = init_reader(&opts, &sys, CAPACITY); 
     let run_flag: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
+    let schema: Arc<SysinfoSchemaBuilder> = sts.get_schema_builder();
     let sys_lock: Arc<RwLock<System>> = Arc::new(RwLock::new(sys));
     let sts_lock: Arc<RwLock<SysinfoStats>> = Arc::new(RwLock::new(sts));
-    let h1 = tasks::task_sysinfo_compute(opts,
-                                         Arc::clone(&sys_lock),
-                                         Arc::clone(&sts_lock),
-                                         Arc::clone(&run_flag));
+    //let builder = Builder::new(Arc::clone(&sts_lock));
+    let h1 = start_reader(opts,
+                          Arc::clone(&sys_lock),
+                          Arc::clone(&sts_lock),
+                          Arc::clone(&run_flag));
+
+    //let h1 = tasks::task_sysinfo_compute(opts,
+    //                                     Arc::clone(&sys_lock),
+    //                                     Arc::clone(&sts_lock),
+    //                                     Arc::clone(&run_flag));
     //let h2 = tasks::task_sysinfo_show(Arc::clone(&sys_lock),
     //                                  Arc::clone(&sts_lock),
     //                                  Arc::clone(&run_flag));
 
-    let server_handler = server::start_server(Arc::clone(&sts_lock));
+    let server_handler = server::start_server(Arc::clone(&schema));
 
     tasks::task_handle_signals(Arc::clone(&run_flag))?;
     let _ = h1.join().unwrap();

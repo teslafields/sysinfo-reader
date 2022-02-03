@@ -10,7 +10,8 @@ use std::thread::{sleep, spawn, JoinHandle};
 use signal_hook::consts::signal::*;
 use signal_hook::iterator::Signals;
 use sysinfo::{ProcessorExt, System, SystemExt, DiskExt, NetworkExt, NetworksExt};
-use super::{SysinfoOpts, SysinfoStats};
+use super::SysinfoOpts;
+use crate::systats::SysinfoStats;
 
 
 fn read_sysinfo(sys_lock: &RwLock<System>, sts_lock: &RwLock<SysinfoStats>) {
@@ -47,6 +48,7 @@ fn read_sysinfo(sys_lock: &RwLock<System>, sts_lock: &RwLock<SysinfoStats>) {
                 Err(_) => 0,
             };
             sts.timestamp.push_back(ts);
+            sts.build_schema();
         }
     }
 }
