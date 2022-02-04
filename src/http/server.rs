@@ -7,12 +7,39 @@ use actix_web::{dev::Server, middleware, rt, web, App,
 use crate::schema::SysinfoSchemaBuilder;
 
 
-async fn all_info(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
-    if let Some(payload) = schemab.get_payload() {
+async fn route_full_info(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+    if let Some(payload) = schemab.get_full_payload() {
         return HttpResponse::Ok().json(payload);
     }
     HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
+}
 
+async fn route_cpu(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+    if let Some(payload) = schemab.get_cpu_payload() {
+        return HttpResponse::Ok().json(payload);
+    }
+    HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
+}
+
+async fn route_mem(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+    if let Some(payload) = schemab.get_mem_payload() {
+        return HttpResponse::Ok().json(payload);
+    }
+    HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
+}
+
+async fn route_disks(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+    if let Some(payload) = schemab.get_disks_payload() {
+        return HttpResponse::Ok().json(payload);
+    }
+    HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
+}
+
+async fn route_networks(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+    if let Some(payload) = schemab.get_networks_payload() {
+        return HttpResponse::Ok().json(payload);
+    }
+    HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
 }
 
 fn run_app(tx: Sender<Server>, schemab: Arc<SysinfoSchemaBuilder>)
@@ -27,7 +54,11 @@ fn run_app(tx: Sender<Server>, schemab: Arc<SysinfoSchemaBuilder>)
             // set application data
             .data(schemab.clone())
             .service(web::resource("/").to(|| async { "Hello world!" }))
-            .service(web::resource("/all_info").route(web::get().to(all_info)))
+            .service(web::resource("/full_info").route(web::get().to(route_full_info)))
+            .service(web::resource("/cpu").route(web::get().to(route_cpu)))
+            .service(web::resource("/mem").route(web::get().to(route_mem)))
+            .service(web::resource("/disks").route(web::get().to(route_disks)))
+            .service(web::resource("/networks").route(web::get().to(route_networks)))
     })
     // Set the number of threads for the server (default is nrcpu)
     .workers(1)

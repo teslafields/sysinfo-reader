@@ -1,4 +1,5 @@
 use std::sync::RwLock;
+use std::collections::HashMap;
 use num_traits::NumCast;
 use serde::{ser::{Serializer, SerializeStruct}, Serialize};
 use crate::systats::SysinfoStats;
@@ -68,10 +69,30 @@ pub struct Info {
 }
 
 #[derive(Serialize, Clone)]
+pub struct Net {
+    rx_bytes: Metric<u64>,
+    tx_bytes: Metric<u64>
+}
+
+impl Net {
+    pub fn new() -> Self {
+        Net {
+            rx_bytes: Metric::new(),
+            tx_bytes: Metric::new(),
+        }
+    }
+}
+
+type Disk = HashMap<String, Metric<u64>>;
+type Networks = HashMap<String, Net>;
+
+#[derive(Serialize, Clone)]
 pub struct SysinfoSchema {
     pub cpu: Cpu,
     pub mem: Mem,
-    pub info: Info,
+    pub system: Info,
+    pub disks: Disk,
+    pub networks: Networks,
 }
 
 impl SysinfoSchema {
@@ -90,10 +111,12 @@ impl SysinfoSchema {
                 mem_available: Metric::new(),
                 mem_buffer: Metric::new(),
             },
-            info: Info {
+            system: Info {
                 uptime: 0,
                 name: String::new(),
-            }
+            },
+            disks: HashMap::new(),
+            networks: HashMap::new(),
         }
     }
 }
@@ -103,9 +126,6 @@ pub struct SysinfoSchemaBuilder {
     //schema: SysinfoSchema,
 }
 
-//impl<T, U> SysinfoPayload<T, U> where 
-//    T: Default + Serialize + NumCast,
-//    U: Default + Serialize + NumCast {
 impl SysinfoSchemaBuilder {
     pub fn new() -> Self {
         SysinfoSchemaBuilder {
@@ -115,9 +135,9 @@ impl SysinfoSchemaBuilder {
 
     pub fn build(&self, stats: &SysinfoStats) {
         if let Ok(mut schema) = self.schema_lock.write() {
-            schema.info.uptime = stats.uptime;
-            if schema.info.name.is_empty() {
-                schema.info.name = stats.name.clone();
+            schema.system.uptime = stats.uptime;
+            if schema.system.name.is_empty() {
+                schema.system.name = stats.name.clone();
             }
             schema.cpu.cpu_cores = stats.cpu_cores;
             schema.mem.total_mem = stats.total_mem;
@@ -142,14 +162,73 @@ impl SysinfoSchemaBuilder {
             schema.mem.mem_available.min = stats.mem_available.get_min();
             schema.mem.mem_available.avg = stats.mem_available.get_avg();
             schema.mem.mem_available.last = stats.mem_available.get_last().unwrap();
+            for (label, diskdata) in stats.disk_usage.iter() {
+                if !schema.disks.contains_key(label) {
+                    schema.disks.insert(label.clone(), Metric::new());
+                }
+                if let Some(diskschema) = schema.disks.get_mut(label) {
+                    diskschema.max = diskdata.get_max();
+                    diskschema.min = diskdata.get_min();
+                    diskschema.avg = diskdata.get_avg();
+                    diskschema.last = diskdata.get_last().unwrap();
+                }
+            }
+            for (label, netdata) in stats.networks.iter() {
+                if !schema.networks.contains_key(label) {
+                    schema.networks.insert(label.clone(), Net::new());
+                }
+                if let Some(netschema) = schema.networks.get_mut(label) {
+                    netschema.rx_bytes.max = netdata.rx_bytes.get_max();
+                    netschema.rx_bytes.min = netdata.rx_bytes.get_min();
+                    netschema.rx_bytes.avg = netdata.rx_bytes.get_avg();
+                    netschema.rx_bytes.last = netdata.rx_bytes.get_last().unwrap();
+                    netschema.tx_bytes.max = netdata.tx_bytes.get_max();
+                    netschema.tx_bytes.min = netdata.tx_bytes.get_min();
+                    netschema.tx_bytes.avg = netdata.tx_bytes.get_avg();
+                    netschema.tx_bytes.last = netdata.tx_bytes.get_last().unwrap();
+                }
+            }
         }
     }
 
-    pub fn get_payload(&self) -> Option<SysinfoSchema> {
+    pub fn get_full_payload(&self) -> Option<SysinfoSchema> {
         if let Ok(schema) = self.schema_lock.read() {
             let payload = schema.clone();
             return Some(payload);
         }
         None
     }
+
+    pub fn get_cpu_payload(&self) -> Option<Cpu> {
+        if let Ok(schema) = self.schema_lock.read() {
+            let payload = schema.cpu.clone();
+            return Some(payload);
+        }
+        None
+    }
+
+    pub fn get_mem_payload(&self) -> Option<Mem> {
+        if let Ok(schema) = self.schema_lock.read() {
+            let payload = schema.mem.clone();
+            return Some(payload);
+        }
+        None
+    }
+
+    pub fn get_disks_payload(&self) -> Option<Disk> {
+        if let Ok(schema) = self.schema_lock.read() {
+            let payload = schema.disks.clone();
+            return Some(payload);
+        }
+        None
+    }
+
+    pub fn get_networks_payload(&self) -> Option<Networks> {
+        if let Ok(schema) = self.schema_lock.read() {
+            let payload = schema.networks.clone();
+            return Some(payload);
+        }
+        None
+    }
+
 }

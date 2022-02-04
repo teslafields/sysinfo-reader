@@ -27,3 +27,6 @@ serde_derive = "1.0.133"
 
 [dev-dependencies]
 actix-rt = "1"
+
+[features]
+debug_systats = []

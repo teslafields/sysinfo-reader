@@ -86,6 +86,29 @@ impl SystatsExecutor {
         }
     }
 
+    #[cfg(feature = "debug_systats")]
+    fn debug_systats(&self) {
+        println!("========================================================");
+        println!("UPTIME: {} CPU_CORES: {} TOTAL_MEM: {} TOTAL_SWAP: {} \
+                 NAME: {}", self.systats.uptime, self.systats.cpu_cores,
+                 self.systats.total_mem, self.systats.total_swap,
+                 self.systats.name);
+        println!("TIMESTAMP:  {:?}", self.systats.timestamp);
+        println!("CPU_USAGE:  {:?}", self.systats.cpu_usage);
+        println!("CPU_FREQ:   {:?}", self.systats.cpu_freq);
+        println!("MEM_FREE:   {:?}", self.systats.mem_free);
+        println!("MEM_USED:   {:?}", self.systats.mem_used);
+        println!("DISK_USAGE:");
+        for (name, buf) in self.systats.disk_usage.iter() {
+            println!(" {:10}: {:?}", name, buf);
+        }
+        println!("NETWORKS:");
+        for (name, netstat) in self.systats.networks.iter() {
+            println!(" {:8}:\n  Rx {:?}\n  Tx {:?}",
+                     name, netstat.rx_bytes, netstat.tx_bytes);
+        }
+    }
+
     fn read_sysinfo(&mut self, sysinfo: &mut System) {
         sysinfo.refresh_cpu();
         sysinfo.refresh_memory();
@@ -126,6 +149,10 @@ impl SystatsExecutor {
         };
         self.systats.timestamp.push_back(ts);
         self.schema.build(&self.systats);
+        #[cfg(feature = "debug_systats")]
+        {
+            self.debug_systats();
+        }
     }
 
     fn init_dynamic_attrs(&mut self, sysinfo: &System) {
