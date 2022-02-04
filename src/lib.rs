@@ -32,12 +32,14 @@ const MIN_WINDOW: u32 = 8;
 // const MIN_WINDOW: u32 = 10*60; // 10 minutes
 const MAX_WINDOW: u32 = 24*60*60; // 24 hours
 
+
 #[derive(Default, Debug)]
 pub struct SysinfoOpts {
     pub sampling_freq: u32,
     pub time_window: u32,
     pub reset_flag: bool,
 }
+
 impl PartialEq for SysinfoOpts {
     fn eq(&self, other: &Self) -> bool {
         self.sampling_freq == other.sampling_freq &&
@@ -45,10 +47,31 @@ impl PartialEq for SysinfoOpts {
     }
 }
 
-
 fn print_usage(program: &str, opts: &Options) {
     let brief = format!("Usage: {} [options]", program);
     print!("{}", opts.usage(&brief));
+}
+
+fn handle_signals(run_flag: Arc<RwLock<bool>>) -> Result<(), Error> {
+    let mut signals = Signals::new(&[
+        SIGHUP,
+        SIGTERM,
+        SIGINT,
+        SIGQUIT,
+    ])?;
+    for signal in signals.forever() {
+        match signal as libc::c_int {
+            SIGHUP | SIGTERM | SIGINT | SIGQUIT => {
+                {
+                    let mut flag = run_flag.write().unwrap();
+                    *flag = false;
+                    break;
+                }
+            },
+            _ => unreachable!(),
+        }
+    }
+    Ok(())
 }
 
 pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
@@ -100,39 +123,22 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
     Some(sysopts)
 }
 
-pub fn handle_signals(run_flag: Arc<RwLock<bool>>) -> Result<(), Error> {
-    let mut signals = Signals::new(&[
-        SIGHUP,
-        SIGTERM,
-        SIGINT,
-        SIGQUIT,
-    ])?;
-    for signal in signals.forever() {
-        match signal as libc::c_int {
-            SIGHUP | SIGTERM | SIGINT | SIGQUIT => {
-                {
-                    let mut flag = run_flag.write().unwrap();
-                    *flag = false;
-                    break;
-                }
-            },
-            _ => unreachable!(),
-        }
-    }
-    Ok(())
-}
+
 
 pub fn run_sys_reader(opts: SysinfoOpts) -> Result<(), Error> {
     let run_flag: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let sysinfo = System::new_all();
     let schema: Arc<SysinfoSchemaBuilder> = Arc::new(SysinfoSchemaBuilder::new());
-    let systats_executor = SystatsExecutor::new(opts, Arc::clone(&schema)); 
-    let h1 = systats_executor.run_executor(sysinfo, Arc::clone(&run_flag));
+    let systats_executor = SystatsExecutor::new(CAPACITY,
+                                                opts.sampling_freq.into(),
+                                                opts.reset_flag,
+                                                Arc::clone(&schema)); 
+    let systats_handler = systats_executor.run_executor(sysinfo,
+                                                        Arc::clone(&run_flag));
     let server_handler = server::start_server(Arc::clone(&schema));
 
     handle_signals(Arc::clone(&run_flag))?;
-    let _ = h1.join().unwrap();
-    //let _ = h2.join().unwrap();
+    let _ = systats_handler.join().unwrap();
     server::stop_server(&server_handler);
     Ok(())
 }

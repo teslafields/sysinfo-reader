@@ -4,12 +4,9 @@ use std::collections::HashMap;
 use std::time::{Duration, SystemTime, Instant, UNIX_EPOCH};
 use std::thread::{sleep, spawn, JoinHandle};
 use sysinfo::{ProcessorExt, System, SystemExt, DiskExt, NetworkExt, NetworksExt};
-use super::SysinfoOpts;
 use crate::ringbuf::RingStatsBuffer;
 use crate::schema::SysinfoSchemaBuilder;
 
-
-const CAPACITY: usize = 4;
 
 pub struct NetworkBytes {
     pub rx_bytes: RingStatsBuffer<u64>,
@@ -17,13 +14,16 @@ pub struct NetworkBytes {
 }
 
 pub struct SysinfoStats {
-    // schema: Arc<SysinfoSchemaBuilder>,
+    pub name: String,
+    pub uptime: u64,
+    pub cpu_cores: usize,
+    pub total_mem: u64,
+    pub total_swap: u64,
     pub cpu_usage: RingStatsBuffer<f32>,
     pub cpu_freq: RingStatsBuffer<u64>,
     pub mem_free: RingStatsBuffer<u64>,
     pub mem_used: RingStatsBuffer<u64>,
     pub mem_available: RingStatsBuffer<u64>,
-    pub mem_buffer: RingStatsBuffer<u64>,
     pub disk_usage: HashMap<String, RingStatsBuffer<u64>>,
     pub networks: HashMap<String, NetworkBytes>,
     pub timestamp: RingStatsBuffer<u64>,
@@ -32,22 +32,26 @@ pub struct SysinfoStats {
 impl SysinfoStats {
     pub fn new(capacity: usize, rst_flag: bool) -> Self {
         SysinfoStats {
-            // schema: Arc::new(SysinfoSchemaBuilder::new()),
+            name: String::new(),
+            uptime: 0,
+            cpu_cores: 0,
+            total_mem: 0,
+            total_swap: 0,
             cpu_usage: RingStatsBuffer::new(capacity, rst_flag),
             cpu_freq: RingStatsBuffer::new(capacity, rst_flag),
             mem_free: RingStatsBuffer::new(capacity, rst_flag),
             mem_used: RingStatsBuffer::new(capacity, rst_flag),
             mem_available: RingStatsBuffer::new(capacity, rst_flag),
-            mem_buffer: RingStatsBuffer::new(capacity, rst_flag),
             disk_usage: HashMap::new(),
             networks: HashMap::new(),
             timestamp: RingStatsBuffer::new(capacity, rst_flag)
         }
     }
 
-    pub fn build_dynamic_values(&mut self, capacity: usize,
-                                rst_flag: bool, disks: &Vec<&str>,
+    pub fn build_dynamic_values(&mut self, disks: &Vec<&str>,
                                 networks: &Vec<&str>) {
+        let capacity = self.timestamp.capacity();
+        let rst_flag = self.timestamp.has_reset_flag();
         for d in disks {
             self.disk_usage.insert(d.to_string(),
                                    RingStatsBuffer::new(capacity, rst_flag));
@@ -67,16 +71,17 @@ impl SysinfoStats {
 
 pub struct SystatsExecutor {
     systats: SysinfoStats,
-    sysopts: SysinfoOpts,
+    sampling_freq: u64,
     // In the future, check for a Fn pointer
     schema: Arc<SysinfoSchemaBuilder>,
 }
 
 impl SystatsExecutor {
-    pub fn new(opts: SysinfoOpts, schema: Arc<SysinfoSchemaBuilder>) -> Self {
+    pub fn new(capacity: usize, sampling_freq: u64, reset_flag: bool,
+               schema: Arc<SysinfoSchemaBuilder>) -> Self {
         SystatsExecutor {
-            systats: SysinfoStats::new(CAPACITY, opts.reset_flag),
-            sysopts: opts, 
+            systats: SysinfoStats::new(capacity, reset_flag),
+            sampling_freq: sampling_freq,
             schema: schema,
         }
     }
@@ -103,6 +108,13 @@ impl SystatsExecutor {
                 netstat.rx_bytes.push_back(netdata.total_received());
             }
         }
+        if self.systats.name.is_empty() {
+            self.systats.name = sysinfo.name().unwrap_or("".to_string());
+        }
+        self.systats.uptime = sysinfo.uptime();
+        self.systats.cpu_cores = sysinfo.physical_core_count().unwrap_or(0);
+        self.systats.total_mem = sysinfo.total_memory();
+        self.systats.total_swap = sysinfo.total_swap();
         self.systats.cpu_usage.push_back(usage);
         self.systats.cpu_freq.push_back(freq);
         self.systats.mem_free.push_back(fmem);
@@ -129,17 +141,15 @@ impl SystatsExecutor {
         let nets: Vec<&str> = sysinfo.networks().iter()
             .map(|(k, _v)| k.as_str())
             .collect();
-        self.systats.build_dynamic_values(CAPACITY, self.sysopts.reset_flag,
-                                          &disks, &nets);
+        self.systats.build_dynamic_values(&disks, &nets);
     }
 
     pub fn run_executor(mut self, mut sysinfo: System,
                         run_flag: Arc<RwLock<bool>>)
                         -> JoinHandle<io::Result<()>> {
         self.init_dynamic_attrs(&sysinfo);
-        let sampling_freq = self.sysopts.sampling_freq as u64;
         let handle = spawn(move || {
-            let read_interval = Duration::new(sampling_freq, 0);
+            let read_interval = Duration::new(self.sampling_freq, 0);
             let sleep_res = Duration::new(1, 0);
             let mut now = Instant::now();
             while *run_flag.read().unwrap() {

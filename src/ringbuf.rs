@@ -42,6 +42,10 @@ where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum
         self.buff.capacity()
     }
 
+    pub fn has_reset_flag(&self) -> bool {
+        self.rst == true
+    }
+
     pub fn iter(&self) -> Iter<T> {
         self.buff.iter()
     }
