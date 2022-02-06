@@ -11,10 +11,10 @@ use signal_hook::consts::signal::*;
 use signal_hook::iterator::Signals;
 use sysinfo::{ProcessorExt, System, SystemExt, DiskExt, NetworkExt, NetworksExt};
 use super::SysinfoOpts;
-use crate::systats::SysinfoStats;
+use crate::systats::SystatsData;
 
 
-fn read_sysinfo(sys_lock: &RwLock<System>, sts_lock: &RwLock<SysinfoStats>) {
+fn read_sysinfo(sys_lock: &RwLock<System>, sts_lock: &RwLock<SystatsData>) {
     if let Ok(mut sys) = sys_lock.write() {
         sys.refresh_cpu();
         sys.refresh_memory();
@@ -54,7 +54,7 @@ fn read_sysinfo(sys_lock: &RwLock<System>, sts_lock: &RwLock<SysinfoStats>) {
 
 pub fn task_sysinfo_compute(sys_opts: SysinfoOpts,
                             sys_lock: Arc<RwLock<System>>,
-                            sts_lock: Arc<RwLock<SysinfoStats>>,
+                            sts_lock: Arc<RwLock<SystatsData>>,
                             run_flag: Arc<RwLock<bool>>)
                             -> JoinHandle<io::Result<()>> {
     let handle = spawn(move || {
@@ -74,7 +74,7 @@ pub fn task_sysinfo_compute(sys_opts: SysinfoOpts,
 }
 
 pub fn task_sysinfo_show(sys_lock: Arc<RwLock<System>>,
-                         sts_lock: Arc<RwLock<SysinfoStats>>,
+                         sts_lock: Arc<RwLock<SystatsData>>,
                          run_flag: Arc<RwLock<bool>>)
         ->  JoinHandle<()> {
     let handle = spawn(move || {

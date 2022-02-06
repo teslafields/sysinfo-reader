@@ -1,11 +1,12 @@
 use std::io;
 use std::sync::{Arc, RwLock};
+use std::marker::{Send, Sync};
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, Instant, UNIX_EPOCH};
 use std::thread::{sleep, spawn, JoinHandle};
 use sysinfo::{ProcessorExt, System, SystemExt, DiskExt, NetworkExt, NetworksExt};
 use crate::ringbuf::RingStatsBuffer;
-use crate::schema::SysinfoSchemaBuilder;
+use crate::schema::SystatsSchemaBuilder;
 
 
 pub struct NetworkBytes {
@@ -13,7 +14,7 @@ pub struct NetworkBytes {
     pub tx_bytes: RingStatsBuffer<u64>
 }
 
-pub struct SysinfoStats {
+pub struct SystatsData {
     pub name: String,
     pub uptime: u64,
     pub cpu_cores: usize,
@@ -29,9 +30,9 @@ pub struct SysinfoStats {
     pub timestamp: RingStatsBuffer<u64>,
 }
 
-impl SysinfoStats {
+impl SystatsData {
     pub fn new(capacity: usize, rst_flag: bool) -> Self {
-        SysinfoStats {
+        SystatsData {
             name: String::new(),
             uptime: 0,
             cpu_cores: 0,
@@ -69,18 +70,18 @@ impl SysinfoStats {
 }
 
 
-pub struct SystatsExecutor {
-    systats: SysinfoStats,
+pub struct SystatsExecutor<T> {
+    systats: SystatsData,
     sampling_freq: u64,
     // In the future, check for a Fn pointer
-    schema: Arc<SysinfoSchemaBuilder>,
+    schema: Arc<T>,
 }
 
-impl SystatsExecutor {
+impl<T> SystatsExecutor<T> where T: 'static + SystatsSchemaBuilder + Sync + Send {
     pub fn new(capacity: usize, sampling_freq: u64, reset_flag: bool,
-               schema: Arc<SysinfoSchemaBuilder>) -> Self {
+               schema: Arc<T>) -> Self {
         SystatsExecutor {
-            systats: SysinfoStats::new(capacity, reset_flag),
+            systats: SystatsData::new(capacity, reset_flag),
             sampling_freq: sampling_freq,
             schema: schema,
         }
@@ -89,20 +90,20 @@ impl SystatsExecutor {
     #[cfg(feature = "debug_systats")]
     fn debug_systats(&self) {
         println!("========================================================");
-        println!("UPTIME: {} CPU_CORES: {} TOTAL_MEM: {} TOTAL_SWAP: {} \
-                 NAME: {}", self.systats.uptime, self.systats.cpu_cores,
-                 self.systats.total_mem, self.systats.total_swap,
-                 self.systats.name);
-        println!("TIMESTAMP:  {:?}", self.systats.timestamp);
-        println!("CPU_USAGE:  {:?}", self.systats.cpu_usage);
-        println!("CPU_FREQ:   {:?}", self.systats.cpu_freq);
-        println!("MEM_FREE:   {:?}", self.systats.mem_free);
-        println!("MEM_USED:   {:?}", self.systats.mem_used);
-        println!("DISK_USAGE:");
+        println!("Timestamp: {} Uptime: {} Name: {}\n\
+                 CPU cores: {} Total Mem: {} Total Swap: {}",
+                 self.systats.timestamp.get_last().unwrap(),
+                 self.systats.uptime, self.systats.name, self.systats.cpu_cores,
+                 self.systats.total_mem, self.systats.total_swap);
+        println!("CPU usage:  {:?}", self.systats.cpu_usage);
+        println!("CPU freq:   {:?}", self.systats.cpu_freq);
+        println!("Mem free:   {:?}", self.systats.mem_free);
+        println!("Mem used:   {:?}", self.systats.mem_used);
+        println!("Disk usage:");
         for (name, buf) in self.systats.disk_usage.iter() {
             println!(" {:10}: {:?}", name, buf);
         }
-        println!("NETWORKS:");
+        println!("Networks:");
         for (name, netstat) in self.systats.networks.iter() {
             println!(" {:8}:\n  Rx {:?}\n  Tx {:?}",
                      name, netstat.rx_bytes, netstat.tx_bytes);

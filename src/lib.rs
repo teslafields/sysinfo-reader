@@ -21,7 +21,7 @@ use signal_hook::iterator::Signals;
 use getopts::{Matches, Options};
 use sysinfo::{System, SystemExt};
 use crate::systats::SystatsExecutor;
-use crate::schema::SysinfoSchemaBuilder;
+use crate::schema::DefaultSchemaBuilder;
 use crate::http::server;
 
 
@@ -125,10 +125,10 @@ pub fn init_opts(args: &[String]) -> Option<SysinfoOpts> {
 
 
 
-pub fn run_sys_reader(opts: SysinfoOpts) -> Result<(), Error> {
+pub fn run_systats_reader(opts: SysinfoOpts) -> Result<(), Error> {
     let run_flag: Arc<RwLock<bool>> = Arc::new(RwLock::new(true));
     let sysinfo = System::new_all();
-    let schema: Arc<SysinfoSchemaBuilder> = Arc::new(SysinfoSchemaBuilder::new());
+    let schema: Arc<DefaultSchemaBuilder> = Arc::new(DefaultSchemaBuilder::new());
     let systats_executor = SystatsExecutor::new(CAPACITY,
                                                 opts.sampling_freq.into(),
                                                 opts.reset_flag,

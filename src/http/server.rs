@@ -4,45 +4,45 @@ use std::thread;
 use mpsc::{Sender, Receiver, channel};
 use actix_web::{dev::Server, middleware, rt, web, App,
                 HttpResponse, HttpServer};
-use crate::schema::SysinfoSchemaBuilder;
+use crate::schema::DefaultSchemaBuilder;
 
 
-async fn route_full_info(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+async fn route_full_info(schemab: web::Data<Arc<DefaultSchemaBuilder>>) -> HttpResponse {
     if let Some(payload) = schemab.get_full_payload() {
         return HttpResponse::Ok().json(payload);
     }
     HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
 }
 
-async fn route_cpu(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+async fn route_cpu(schemab: web::Data<Arc<DefaultSchemaBuilder>>) -> HttpResponse {
     if let Some(payload) = schemab.get_cpu_payload() {
         return HttpResponse::Ok().json(payload);
     }
     HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
 }
 
-async fn route_mem(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+async fn route_mem(schemab: web::Data<Arc<DefaultSchemaBuilder>>) -> HttpResponse {
     if let Some(payload) = schemab.get_mem_payload() {
         return HttpResponse::Ok().json(payload);
     }
     HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
 }
 
-async fn route_disks(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+async fn route_disks(schemab: web::Data<Arc<DefaultSchemaBuilder>>) -> HttpResponse {
     if let Some(payload) = schemab.get_disks_payload() {
         return HttpResponse::Ok().json(payload);
     }
     HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
 }
 
-async fn route_networks(schemab: web::Data<Arc<SysinfoSchemaBuilder>>) -> HttpResponse {
+async fn route_networks(schemab: web::Data<Arc<DefaultSchemaBuilder>>) -> HttpResponse {
     if let Some(payload) = schemab.get_networks_payload() {
         return HttpResponse::Ok().json(payload);
     }
     HttpResponse::ServiceUnavailable().body("Internal Error".to_string())
 }
 
-fn run_app(tx: Sender<Server>, schemab: Arc<SysinfoSchemaBuilder>)
+fn run_app(tx: Sender<Server>, schemab: Arc<DefaultSchemaBuilder>)
     -> std::io::Result<()> {
     let mut sys = rt::System::new("test");
     let srv = HttpServer::new(move || {
@@ -70,7 +70,7 @@ fn run_app(tx: Sender<Server>, schemab: Arc<SysinfoSchemaBuilder>)
     sys.block_on(srv)
 }
 
-pub fn start_server(schemab: Arc<SysinfoSchemaBuilder>) -> Receiver<Server> {
+pub fn start_server(schemab: Arc<DefaultSchemaBuilder>) -> Receiver<Server> {
     std::env::set_var("RUST_LOG", "actix_web=info,actix_server=trace");
     env_logger::init();
 

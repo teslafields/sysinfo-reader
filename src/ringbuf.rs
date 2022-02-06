@@ -1,6 +1,6 @@
 use std::fmt::{Formatter, Debug, Display, Result as ResultFmt};
 use std::cmp::PartialOrd;
-use std::ops::AddAssign;
+use std::ops::{Div, AddAssign};
 use std::collections::VecDeque;
 use std::collections::vec_deque::Iter;
 use num_traits::{Num, NumCast};
@@ -19,7 +19,7 @@ pub struct RingStatsBuffer<T> {
 }
 
 impl<T> RingStatsBuffer<T> 
-where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum 
+where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum
 {
     pub fn new(capacity: usize, rst: bool) -> Self {
         RingStatsBuffer{
@@ -119,12 +119,21 @@ where T: Default + PartialOrd + Copy + Num + NumCast + AddAssign + Sum
 
 }
 
-impl<T: Debug + Display> Debug for RingStatsBuffer<T> {
+impl<T> Debug for RingStatsBuffer<T> 
+where T: Debug + Display + Copy + PartialOrd + NumCast + Div<Output=T> {
     fn fmt(&self, f: &mut Formatter) -> ResultFmt {
         if f.alternate() {
-            f.write_fmt(format_args!("Min {:10.2} Max: {:10.2} Avg: {:10.2} Buff: {:?}", self.min, self.max, self.avg, self.buff))
+            f.write_fmt(format_args!("{:10.2} | {:10.2} | {:10.2} | {:?}", self.min, self.max, self.avg, self.buff))
         } else {
-            f.write_fmt(format_args!("Min {:10.2} Max: {:10.2} Avg: {:10.2}", self.min, self.max, self.avg))
+            let limit = NumCast::from(u32::MAX).unwrap();
+            let divisor = NumCast::from(1024).unwrap();
+            let mut min = self.min;
+            let mut max = self.max;
+            let mut avg = self.avg;
+            if self.min > limit { min = self.min/divisor; }
+            if self.avg > limit { avg = self.avg/divisor; }
+            if self.max > limit { max = self.max/divisor; }
+            f.write_fmt(format_args!("{:10.2} | {:10.2} | {:10.2}", min, max, avg))
         }
     }
 }
