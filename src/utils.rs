@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::prelude::*;
 
+
 pub fn open_and_read(filename: &str) -> String {
     let mut f = File::open(&filename)
         .expect(&format!("Error opening file: {}", filename));
